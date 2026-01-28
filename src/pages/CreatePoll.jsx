@@ -16,15 +16,12 @@ export default function CreatePoll() {
 
   // Categories
   const [categoryDraft, setCategoryDraft] = useState("");
-  const [categories, setCategories] = useState(["S Tier", "A Tier", "B Tier", "C Tier", "D Tier"]);
+  const [categories, setCategories] = useState([]);
 
   // Items
   const [itemText, setItemText] = useState("");
   const [itemImage, setItemImage] = useState(""); // URL
-  const [items, setItems] = useState([
-    { text: "Exemplo 1", imageUrl: "" },
-    { text: "Exemplo 2", imageUrl: "" }
-  ]);
+  const [items, setItems] = useState([]);
 
   const [creating, setCreating] = useState(false);
 
@@ -120,6 +117,7 @@ export default function CreatePoll() {
                 onKeyDown={(e) => e.key === "Enter" && addCategory()}
                 placeholder="Nova categoria..."
                 className="flex-1"
+                autoComplete="off"
               />
               <Button type="button" onClick={addCategory}>Adicionar</Button>
             </div>
@@ -152,6 +150,7 @@ export default function CreatePoll() {
                     onKeyDown={(e) => e.key === "Enter" && addItem()}
                     placeholder={itemImage ? "Legenda da imagem (opcional)" : "Nome do item..."}
                     className={itemImage ? "pl-10" : ""}
+                    autoComplete="off"
                   />
                   {itemImage && (
                     <div className="absolute left-2 top-1/2 -translate-y-1/2 h-6 w-6 rounded overflow-hidden border border-slate-600 bg-slate-800">
