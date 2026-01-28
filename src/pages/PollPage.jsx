@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { DndContext, useDroppable, closestCenter } from "@dnd-kit/core";
+import { DndContext, useDroppable, pointerWithin } from "@dnd-kit/core";
 import {
   SortableContext,
   arrayMove,
@@ -25,8 +25,6 @@ export default function PollPage() {
   // containers: "UNASSIGNED" + one per category
   const [containers, setContainers] = useState({});
   const [itemsById, setItemsById] = useState({});
-
-  const { setNodeRef: setNodeRefPool } = useDroppable({ id: "UNASSIGNED" });
 
   useEffect(() => {
     let mounted = true;
@@ -54,8 +52,6 @@ export default function PollPage() {
     return () => (mounted = false);
   }, [id]);
 
-  const allContainerIds = useMemo(() => Object.keys(containers), [containers]);
-
   function findContainer(itemId) {
     for (const cId of Object.keys(containers)) {
       if (containers[cId].includes(itemId)) return cId;
@@ -71,7 +67,7 @@ export default function PollPage() {
     const overId = over.id;
 
     const from = findContainer(activeId);
-    const to = findContainer(overId) || overId; // when dropping on column itself (not used here)
+    const to = findContainer(overId) || overId;
 
     if (!from || !to) return;
     if (from === to) {
@@ -86,33 +82,34 @@ export default function PollPage() {
       return;
     }
 
-    // move between containers (append at end)
     setContainers((prev) => {
       const next = { ...prev };
       next[from] = next[from].filter((x) => x !== activeId);
-      // if overId is an item inside target, insert before it; else append
+
       const overIndex = next[to].indexOf(overId);
-      if (overIndex >= 0) next[to] = [...next[to].slice(0, overIndex), activeId, ...next[to].slice(overIndex)];
-      else next[to] = [...next[to], activeId];
+      if (overIndex >= 0) {
+        next[to] = [...next[to].slice(0, overIndex), activeId, ...next[to].slice(overIndex)];
+      } else {
+        next[to] = [...next[to], activeId];
+      }
       return next;
     });
   }
 
-  const readyToSubmit = useMemo(() => {
-    if (!poll) return false;
-    return containers.UNASSIGNED?.length === 0;
-  }, [poll, containers]);
-
   async function submitVote() {
     if (!poll) return;
-    if (!readyToSubmit) {
-      setError("Você precisa classificar TODOS os itens (arraste todos para alguma categoria).");
-      return;
+
+    const unassignedCount = containers.UNASSIGNED?.length || 0;
+    if (unassignedCount > 0) {
+      const confirmed = window.confirm(
+        `Você tem ${unassignedCount} item(s) não classificado(s).\n\nDeseja enviar o voto mesmo assim? Os itens não classificados não contarão pontos.`
+      );
+      if (!confirmed) return;
     }
+
     setError("");
     setSubmitting(true);
 
-    // build classifications: item -> category (skip UNASSIGNED)
     const classifications = {};
     poll.categories.forEach((cat) => {
       (containers[cat] || []).forEach((item) => {
@@ -152,7 +149,7 @@ export default function PollPage() {
           <div className="flex gap-3">
             <Button
               onClick={submitVote}
-              disabled={!readyToSubmit || submitting}
+              disabled={submitting}
               className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white border-none shadow-lg shadow-indigo-500/20"
             >
               {submitting ? "Enviando..." : "Enviar Voto"}
@@ -170,7 +167,7 @@ export default function PollPage() {
 
       <div className="max-w-7xl mx-auto px-2 sm:px-4">
 
-        <DndContext collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+        <DndContext collisionDetection={pointerWithin} onDragEnd={onDragEnd}>
 
           {/* Tier List Area */}
           <div className="border border-slate-700/50 bg-slate-800/50 shadow-2xl mb-8 rounded-lg overflow-hidden">
@@ -186,28 +183,45 @@ export default function PollPage() {
             ))}
           </div>
 
-          {/* Unassigned Items Pool */}
-          <div className={`p-5 rounded-xl border-2 border-dashed transition-all ${containers.UNASSIGNED?.length === 0 ? "border-emerald-600/50 bg-emerald-900/10" : "border-slate-700/50 bg-slate-800/30 shadow-lg"}`}>
-            <h3 className="text-sm font-semibold text-slate-300 mb-4 uppercase tracking-wider">
-              {containers.UNASSIGNED?.length === 0 ? "✅ Tudo classificado!" : "Itens para classificar (Arraste para cima)"}
-            </h3>
+          {/* Unassigned Items Pool Component */}
+          <PoolDropArea
+            items={containers.UNASSIGNED || []}
+            itemsById={itemsById}
+          />
 
-            <SortableContext items={containers.UNASSIGNED || []} strategy={rectSortingStrategy}>
-              <div ref={setNodeRefPool} className="flex flex-wrap gap-3 min-h-[140px]">
-                {containers.UNASSIGNED?.map((itemId) => (
-                  <ItemCard key={itemId} id={itemId} item={itemsById[itemId]} />
-                ))}
-              </div>
-            </SortableContext>
-          </div>
         </DndContext>
-
       </div>
     </div>
   );
 }
 
-// Separate component for the pool droppable area to clean up
-function PoolArea({ children, setNodeRef }) {
-  return <div ref={setNodeRef}>{children}</div>;
+// Sub-component for the pool to properly use useDroppable context
+function PoolDropArea({ items, itemsById }) {
+  const { setNodeRef, isOver } = useDroppable({ id: "UNASSIGNED" });
+  const count = items.length;
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`p-5 rounded-xl border-2 border-dashed transition-all ${isOver
+          ? "border-indigo-500/70 bg-indigo-900/20 shadow-inner ring-2 ring-indigo-500/20"
+          : count === 0
+            ? "border-emerald-600/50 bg-emerald-900/10"
+            : "border-slate-700/50 bg-slate-800/30 shadow-lg"
+        }`}
+    >
+      <h3 className="text-sm font-semibold text-slate-300 mb-4 uppercase tracking-wider flex items-center justify-between">
+        <span>{count === 0 ? "✅ Tudo classificado!" : "Itens para classificar"}</span>
+        {count > 0 && <span className="text-xs bg-slate-700 text-slate-300 px-2 py-1 rounded-full">{count} restantes</span>}
+      </h3>
+
+      <SortableContext items={items} strategy={rectSortingStrategy}>
+        <div className="flex flex-wrap gap-3 min-h-[140px]">
+          {items.map((itemId) => (
+            <ItemCard key={itemId} id={itemId} item={itemsById[itemId]} />
+          ))}
+        </div>
+      </SortableContext>
+    </div>
+  );
 }
